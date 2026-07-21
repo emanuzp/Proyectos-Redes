@@ -1,0 +1,261 @@
+
+--------------------------------------------
+Activar Vlan y Hostname
+--------------------------------------------
+ena
+conf t
+vlan 10
+name IT
+exit
+vlan 20
+name Almacen
+exit
+vlan 100
+name Server
+exit
+hostname MLDESP-02
+exit
+write
+
+
+--------------------------------------------
+Activar Vlan Nativa
+--------------------------------------------
+
+en
+conf t
+vlan 99
+name Management
+exit
+interface vlan 99
+ip address 192.168.99.9 255.255.255.0
+description Vlan de Gestion
+exit
+int ran g1/0/23-24
+no sh
+switchport trunk native vlan 99
+switchport trunk allowed vlan 10,20,100
+switchport trunk allowed vlan remove 1
+channel-group 2 mode active
+int ran g1/0/21-22
+no sh
+switchport trunk native vlan 99
+switchport trunk allowed vlan 10,20,99,100
+switchport trunk allowed vlan remove 1
+speed 100
+duplex full
+channel-group 1 mode active
+interface port-channel 1
+switchport trunk native vlan 99
+switchport trunk allowed vlan 10,20,99,100
+switchport trunk allowed vlan remove 1
+exit
+interface port-channel 2
+switchport trunk native vlan 99
+switchport trunk allowed vlan 10,20,99,100
+switchport trunk allowed vlan remove 1
+exit
+int vlan 1
+shu
+exit
+do wr
+-------------------------------------------
+
+interface FastEthernet0/3
+description Conexion a PC-Almacen
+switchport access vlan 20
+switchport mode access
+switchport port-security
+switchport port-security mac-address sticky 
+switchport port-security violation restrict 
+switchport port-security aging time 1
+duplex full
+spanning-tree portfast
+speed 100
+spanning-tree bpduguard enable
+
+
+-------------------------------------------
+int g0/1
+switchport trunk native vlan 99
+switchport trunk allowed vlan 10,20,99,100
+no sh
+do wr
+exit
+sh int trunk  #con esto puedes observar si acepta o no
+
+---------------------------------------------
+
+# Subinterfaz para la VLAN 99 (Router)
+
+interface gigabitEthernet 0/0/0
+no shutdown
+exit
+interface gigabitEthernet 0/0/0.99
+encapsulation dot1Q 99 native
+ip address 192.168.99.3 255.255.255.0
+exit
+interface gigabitEthernet 0/0/0.100
+encapsulation dot1Q 100
+ip address 192.168.100.3 255.255.255.0
+exit
+interface gigabitEthernet 0/0/0.20
+encapsulation dot1Q 20
+ip address 192.168.20.3 255.255.255.0
+exit
+interface gigabitEthernet 0/0/0.10
+encapsulation dot1Q 10
+ip address 192.168.10.3 255.255.255.0
+
+-----------
+
+La nativa es un dolor de cabeza debes tener en cuenta
+
+show ip interface brief | include GigabitEthernet0/0/0
+
+switch:
+show interfaces GigabitEthernet0/1 switchport
+
+Mira estas dos líneas de tu resultado:Administrative Mode: dynamic autoOperational Mode: static access
+
+esto quiere decir que esta ignorando troncal
+se debe forzar el switchport mode trunk
+
+SOFI-02# show cdp neighbors detail
+SOFI-02# show int trunk 
+
+--------------------------------------
+
+Activar logg
+
+en
+clock set 09:57:00 01 aug 2026
+conf t
+logging on
+logging 192.168.100.10
+service timestamps log datetime msec
+ntp server 192.168.100.10
+
+---------------------------------------
+
+Activar SNMP
+
+snmp-server community public RO
+snmp-server community private RW
+snmp-server community prueba RO
+
+en web browser del server podemos get o set
+octetstring es para mandar texto
+
+----------------------------------------
+Configuración de las interfaces 
+
+en
+conf t
+hostname RDES-01
+int s0/2/1
+ip address 10.0.0.10 255.255.255.252 
+description Conexion al S0/2/1 RC-01
+no sh
+exit
+int s0/2/0
+ip address 10.0.0.14 255.255.255.252 
+description Conexion al S0/2/0 RC-02
+no sh
+exit
+do wr
+
+------------------------------------
+RC-01
+en
+conf t
+ip route 10.0.0.4 255.255.255.252 Serial0/2/0 10.0.0.1 
+ip route 10.0.0.4 255.255.255.252 10.0.0.10 10
+ip route 10.0.0.12 255.255.255.252 Serial0/2/1 10.0.0.10 
+ip route 10.0.0.12 255.255.255.252 10.0.0.1 10
+
+RDES
+en
+conf t
+ip route 10.0.0.0 255.255.255.252 Serial0/2/1 10.0.0.9
+ip route 10.0.0.0 255.255.255.252 10.0.0.13 10
+ip route 10.0.0.4 255.255.255.252 Serial0/2/0 10.0.0.13
+ip route 10.0.0.4 255.255.255.252 10.0.0.9 10
+do wr
+
+RC-02
+en
+conf t
+ip route 10.0.0.0 255.255.255.252 Serial0/2/1 10.0.0.5
+ip route 10.0.0.0 255.255.255.252 10.0.0.14 10
+ip route 10.0.0.8 255.255.255.252 Serial0/2/0 10.0.0.14
+ip route 10.0.0.8 255.255.255.252 10.0.0.5 10
+do wr
+
+----------------------------------------------
+
+HSRP
+
+interface vlan 99
+description Vlan de Gestion
+ip address 192.168.99.5 255.255.255.0
+standby 1 ip 192.168.99.254
+standby 1 priority 110
+standby 1 preempt
+exit
+interface vlan 10
+description Vlan IT
+ip address 192.168.1.5 255.255.255.0
+standby 10 ip 192.168.1.254
+standby 10 priority 110
+standby 10 preempt
+exit
+interface vlan 20
+description Vlan Almacen
+ip address 192.168.2.5 255.255.255.0
+standby 20 ip 192.168.2.254
+standby 20 priority 100
+standby 20 preempt
+exit
+interface vlan 100
+description Vlan Server
+ip address 192.168.100.5 255.255.255.0
+standby 100 ip 192.168.100.254
+standby 100 priority 100
+standby 100 preempt
+exit
+
+HSRP - ALT
+
+interface vlan 99
+description Vlan de Gestion
+standby 1 ip 192.168.99.254
+standby 1 priority 100
+standby 1 preempt
+exit
+interface vlan 10
+description Vlan IT
+ip address 192.168.1.6 255.255.255.0
+standby 10 ip 192.168.1.254
+standby 10 priority 100
+standby 10 preempt
+exit
+interface vlan 20
+description Vlan Almacen
+ip address 192.168.2.6 255.255.255.0
+standby 20 ip 192.168.2.254
+standby 20 priority 110
+standby 20 preempt
+exit
+interface vlan 100
+description Vlan Server
+ip address 192.168.100.6 255.255.255.0
+standby 100 ip 192.168.100.254
+standby 100 priority 110
+standby 100 preempt
+exit
+
+--------------------------------------------
+
+
+
